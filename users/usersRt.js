@@ -7,11 +7,17 @@ router.get("/", userCt.getAllUsers);
 router.post(
   "/",
   uploadPic.single("profilePic"),
-  validator.validatorCreateUser,
+  validator.createUser,
   userCt.createUser
 );
 router.put("/:id", userCt.updateUser);
 router.delete("/:id", userCt.deleteUserById);
 router.post("/login", userCt.loginUser);
+//send request for password resetting
+router.get("/forgot-password", userCt.forgot);
+//Magic Link shows up reset form
+router.get("/reset/:token", userCt.reset);
+//process reset form
+router.post("/reset/:token", validator.resetPassword, userCt.saveNewPass);
 
 module.exports = router;

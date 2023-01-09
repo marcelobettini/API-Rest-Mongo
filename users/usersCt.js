@@ -2,8 +2,9 @@ const bc = require("../utils/handlePassword");
 const User = require("./usersMd");
 const public_url = process.env.public_url;
 const jwt = require("../utils/handleJWT");
+const transporter = require("../utils/handleMailer");
 
-//get all users //TODO: improve this mess
+//GET ALL USERS
 const getAllUsers = (req, res, next) => {
   User.find()
     .then((data) => {
@@ -15,15 +16,13 @@ const getAllUsers = (req, res, next) => {
     });
 };
 
-//create user
+//CREATE USER
 const createUser = async (req, res, next) => {
   let pic = "";
   if (req.file) {
     pic = `${public_url}/storage/${req.file.filename}`;
   }
-
   const password = await bc.hashPassword(req.body.password);
-
   //send to database
   const newUser = new User({ ...req.body, profilePic: pic, password });
   newUser.save((error, result) => {
@@ -36,7 +35,7 @@ const createUser = async (req, res, next) => {
   });
 };
 
-//update user
+//UPDATE USER
 const updateUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, req.body, {
@@ -44,11 +43,11 @@ const updateUser = async (req, res, next) => {
     });
     res.status(200).json({ message: "usuario con cambios", usuario: user });
   } catch (error) {
-    next();
+    next(error);
   }
 };
 
-//delete user by id
+//DELETE USER BY ID
 const deleteUserById = async (req, res, next) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
@@ -57,7 +56,8 @@ const deleteUserById = async (req, res, next) => {
     next();
   }
 };
-//Login (en un proyecto real, sería conveniente tener un servicio de autorización y autenticación con el manejo de register y login)
+
+//LOGIN (en un proyecto real, sería conveniente tener un servicio de autorización y autenticación con el manejo de register, login, forgot password, etc...)
 const loginUser = async (req, res, next) => {
   let error = new Error("Email or Password Invalid");
   const user = await User.find().where({ email: req.body.email });
@@ -71,14 +71,12 @@ const loginUser = async (req, res, next) => {
     error.status = 401;
     return next(error);
   }
-
   //gestión de token
   const userForToken = {
     email: user[0].email,
     fullName: user[0].fullName,
     userName: user[0].userName,
   };
-
   const accessToken = await jwt.tokenSign(userForToken, "24h");
   res.status(200).json({
     message: "access granted",
@@ -87,10 +85,82 @@ const loginUser = async (req, res, next) => {
   });
 };
 
+//FORGOT PASSWORD (este servicio enviará un email con un link de recuperación de contraseña al email de usuario registrado en la base de datos. Desde ese link, que incluirá un token de seguridad, podremos ir al formulario de recuperación y este vinculará con el procedimiento de restauración de contraseña en la base de datos)
+const forgot = async (req, res, next) => {
+  //existe el email?
+  let error = new Error("No user with that email");
+  const user = await User.find().where({ email: req.body.email });
+  if (!user.length) {
+    error.status = 404;
+    return next(error);
+  }
+  //si existe, generamos el token de seguridad y el link de recuperación de contraseña
+  const userForToken = {
+    id: user[0].id,
+    name: user[0].fullName,
+    email: user[0].email,
+  };
+  const token = await jwt.tokenSign(userForToken, "15m");
+
+  const link = `${process.env.public_url}/api/users/reset/${token}`;
+
+  //creamos el cuerpo del email, lo enviamos al usuario y lo indicamos en la response
+  const mailDetails = {
+    from: "Tech-Support@mydomain.com",
+    to: userForToken.email,
+    subject: "Password recovery magic-link",
+    html: `<h2>Password Recovery Service</h2>
+        <p>To reset your password, please click on the link and follow instructions</p>
+        <a href="${link}">click</a>
+        `,
+  };
+  transporter.sendMail(mailDetails, (error, data) => {
+    if (error) {
+      error.message = error.code;
+      next(error);
+    } else {
+      res.status(200).json({
+        message: `Hi ${userForToken.name}, we've sent an email with instructions to ${userForToken.email}`,
+      });
+    }
+  });
+};
+
+//FORM GET->  RESET PASSWORD
+const reset = async (req, res, next) => {
+  const { token } = req.params;
+  const tokenStatus = jwt.tokenVerify(token);
+  if (tokenStatus instanceof Error) {
+    return next(tokenStatus);
+  }
+  res.render("reset", { tokenStatus, token });
+};
+
+//FORM POST - Saves the new password
+const saveNewPass = async (req, res, next) => {
+  const { token } = req.params;
+  const tokenStatus = await jwt.tokenVerify(token);
+
+  if (tokenStatus instanceof Error) return next(tokenStatus);
+  const newPassword = await bc.hashPassword(req.body.password_1);
+  try {
+    const updatedUser = await User.findByIdAndUpdate(tokenStatus.id, {
+      password: newPassword,
+    });
+    res
+      .status(200)
+      .json({ message: `Password changed for user ${tokenStatus.name}` });
+  } catch (error) {
+    next(error);
+  }
+};
 module.exports = {
   getAllUsers,
   deleteUserById,
   createUser,
   updateUser,
   loginUser,
+  forgot,
+  reset,
+  saveNewPass,
 };
