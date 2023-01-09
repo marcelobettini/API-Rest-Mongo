@@ -2,9 +2,51 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 require("./config/db.js");
+const path = require("path");
+//HANDLEBARS FOR RESET PASSWORD FORM
+const exphbs = require("express-handlebars");
 
 const PORT = process.env.PORT || 3030;
 const server = express();
+//Load Bootstrap
+server.use(
+  "/css",
+  express.static(path.join(__dirname, "node_modules/bootstrap/dist/css"))
+);
+server.use(
+  "/js",
+  express.static(path.join(__dirname, "node_modules/bootstrap/dist/js"))
+);
+//Handlebars settings
+const hbs = exphbs.create({
+  defaultLayout: "main",
+  layoutsDir: path.join(__dirname, "views/layouts"),
+  partialsDir: path.join(__dirname, "views/partials"),
+  helpers: {
+    errBelowInput: function (arr, inputName) {
+      if (!arr) return null;
+      const warning = arr.find((el) => el.param === inputName);
+      if (warning == undefined) {
+        return null;
+      } else {
+        return `
+        <div class="alert alert-danger" role="alert">
+            ${warning.msg}
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="alert"
+              aria-label="Close"
+            ></button>
+          </div>
+        `;
+      }
+    },
+  },
+});
+server.set("views", "./views");
+server.engine("handlebars", hbs.engine);
+server.set("view engine", "handlebars");
 
 //express core middlewares
 server.use(express.static("public"));

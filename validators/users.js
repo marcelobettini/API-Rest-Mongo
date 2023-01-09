@@ -1,7 +1,6 @@
 const { check, validationResult } = require("express-validator");
-console.log("validator runs...");
 //working on this...
-const validatorCreateUser = [
+const createUser = [
   check("fullName")
     .trim()
     .notEmpty()
@@ -22,8 +21,8 @@ const validatorCreateUser = [
     .trim()
     .notEmpty()
     .withMessage("Field cannot be empty")
-    .isLength({ min: 8, max: 15 })
-    .withMessage("Character count: min 8, max 15"),
+    .isLength({ min: 8, max: 16 })
+    .withMessage("Character count: min 8, max 16"),
   (req, res, next) => {
     console.count("in validator callback");
     console.log(req.body);
@@ -36,6 +35,29 @@ const validatorCreateUser = [
   },
 ];
 
+const resetPassword = [
+  check("password_1")
+    .exists()
+    .isLength({ min: 8, max: 16 })
+    .withMessage("Character count: min 8, max 16")
+    .trim(),
+  check("password_2").custom(async (password_2, { req }) => {
+    if (req.body.password_1 !== password_2) {
+      throw new Error("Passwords must be identical");
+    }
+  }),
+  (req, res, next) => {
+    const token = req.params.token;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const arrWarnings = errors.array();
+      res.render("reset", { arrWarnings, token });
+    } else {
+      return next();
+    }
+  },
+];
 module.exports = {
-  validatorCreateUser,
+  createUser,
+  resetPassword,
 };
